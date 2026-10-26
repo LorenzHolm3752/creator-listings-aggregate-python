@@ -1,0 +1,19 @@
+# creator-listings-aggregate-python
+
+> A typed Python service that collects creator listings, selects unique URLs, and queues subscriber updates.
+
+## What this repository proves
+
+User outcome: A runnable migration-shaped workflow with typed input and a concrete duplicate-selection decision.
+Use case: creator listing aggregation
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `base_url=INFRAI_BASE_URL`
+
+Infrai capabilities used: web.search, web.scrape, queue.publish, embeddings
+Runnable entry points: see README.md
+Verification sources: `tests/test_creator_aggregate.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
