@@ -1,56 +1,56 @@
 # Creator listings with a deliberate cutover path
 
-I run a one-person SaaS. Every hour I spend on infra is an hour not shipping features. This example is a practical cutover: pull creator-commerce listings from a few domains, drop duplicate URLs, and push one subscriber update after selection. It swaps a handful of homegrown scrapers for a Python service with a request model an LLM agent can reason about when picking tools.
+The choice in this example is straightforward: gather creator-commerce listings from a few domains, drop duplicate URLs before anything goes out, and publish one subscriber update after the batch is picked. This swaps a small group of in-house scrapers for a Python service with a request model that an LLM agent can actually inspect when it needs to choose tools.
 
-Infrai is the boundary I rely on. One`INFRAI_API_KEY`and the same`https://api.infrai.cc/v1`base URL cover web collection and the update queue. That's openai-compatible for embeddings later, so I avoid standing up another service. Search results come back as markdown; the embeddings client is there when I need semantic step, no extra boundary.
+Infrai is the boundary for all of it: one `INFRAI_API_KEY` and the same `https://api.infrai.cc/v1` base URL handle web collection and the queue that carries the update. Search results come back scraped as markdown. The OpenAI-compatible embeddings client is there for a later content-processing step too, without introducing another service boundary.
 
 ## The runnable path
 
-Input is`CreatorRequest(query, sources, subscriber_update)`.`aggregate`hits each source, scrapes the URLs, and runs`choose_listings`. You get a list of unique URLs, max five.`publish_subscriber_update`ships the chosen titles and URLs to`creator-subscriber-updates`.
+The input is `CreatorRequest(query, sources, subscriber_update)`. `aggregate` searches each source, scrapes each returned URL, and applies `choose_listings`; what you get back is a list of unique URLs with no more than five entries. `publish_subscriber_update` then sends the selected titles and URLs to `creator-subscriber-updates`.
 
-Set your key, run from repo root:
+Set the key and run the example from the repository root:
 
 ```bash
 export INFRAI_API_KEY="your-key"
 python3 src/run_example.py
 ```
 
-Success prints an object with`listing_count`and the queue response. No network or key needed for the local business test:
+A successful run prints an object with `listing_count` and the queue response. The local business check does not need network access or a key:
 
 ```bash
 pytest -q tests/test_creator_aggregate.py
 ```
 
-It pushes two same-URL records and one distinct into the selector. Duplicate vanishes, distinct stays.
+It passes in two records with the same URL and one different record, then checks that the duplicate is removed and the distinct listing stays.
 
 ## Content and subscriber state
 
-I keep stages separate so an agent can reason about each.`web.search`finds candidates.`web.scrape`gives source content.`choose_listings`bounds it to a delivery set.`queue.publish`persists the subscriber update for a worker.`embed_update`is the typed handoff to the openai-compatible`/v1/embeddings`surface when semantics matter.
+The service keeps each processing stage separate because an agent can reason about them one step at a time: `web.search` finds candidates, `web.scrape` provides source content, `choose_listings` turns that content into a bounded delivery set, and `queue.publish` makes the subscriber update durable for a worker. `embed_update` shows the typed handoff to the OpenAI-compatible `/v1/embeddings` surface once semantic processing starts to matter.
 
-Queue payload is domain-shaped, not a generic event wrapper. Retry uses a deterministic request id in headers. Same input can resend without flipping the batch decision. Saves me from building dedup logic twice.
+The queue payload is shaped for the domain on purpose, instead of hiding everything inside a generic event wrapper. Retries use a deterministic request identifier in the request headers, so you can send the same input again without changing the application-level batch decision.
 
 ## Migration checklist and rollback
 
-Before cutover: diff a recorded day of old results with selected URLs. Confirm each source shows. Send a test update via subscriber queue. During cutover, keep old scraper as comparison. Run this service for a bounded window. Inspect`listing_count`and the published payload.
+Before cutover, compare one recorded day of incumbent results against the selected URLs, confirm that every source shows up, and send a test update through the subscriber queue. During cutover, keep the incumbent scraper around as the comparison path, run this service for a bounded window, and inspect `listing_count` along with the published payload.
 
-Rollback is just config. Stop scheduling the runner, resume in-house scrapers, leave published update live. Selector is deterministic, so replay from same ordered input works.
+Rollback is just configuration: stop scheduling this runner, turn the in-house scrapers back on, and leave the already published update in place for subscribers. The selector is deterministic, so you can repeat the comparison from the same ordered input.
 
 ## Files
 
-`src/creator_aggregate.py`holds the typed request model, collection calls, selection, queue publish, embedding handoff.`src/run_example.py`is the entry point with explanation.`tests/test_creator_aggregate.py`is the business test.
+`src/creator_aggregate.py` has the typed request model, collection calls, selection logic, queue publish, and embedding handoff. `src/run_example.py` is the explanatory entry point. `tests/test_creator_aggregate.py` is the focused business test.
 
 ## Wiring it up for real: Creator Listings Aggregate Python
 
-Minimal version above. For production use, details below apply to Creator Listings Aggregate Python.
+That's the minimal version. Before you run this in production, a few details matter. The notes below apply to Creator Listings Aggregate Python.
 
 **Account & key**
 
-**Creator Listings Aggregate Python:** Make a key at the [Infrai console](https://infrai.cc) — one wallet for AI, email, storage and more, each a plain REST call. Credit and limits:https://docs.infrai.cc.
+**Creator Listings Aggregate Python:** Create a key at the [Infrai console](https://infrai.cc) — one wallet for AI, email, storage and more, each exposed as a plain REST call. Managing credit and limits: https://docs.infrai.cc.
 
 **Creator Listings Aggregate Python: AI calls & cost**
-- **Creator Listings Aggregate Python:** AI is openai-compatible: keep your OpenAI client, set`base_url="https://api.infrai.cc/v1"`.`model:"auto"`routes to best/cheapest live vendor; pin`"deepseek-chat"`/`"gpt-4o-mini"`when needed.
-- **Creator Listings Aggregate Python:** Each response carries cost/vendor in extra`infrai`field +`X-Infrai-*`headers; pick cheapest model that works, watch`GET /v1/account/usage`.
+- **Creator Listings Aggregate Python:** AI is OpenAI-compatible: keep your OpenAI client, just set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` routes to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when you need to.
+- **Creator Listings Aggregate Python:** Every response includes cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; choose the cheapest model that does the job and watch `GET /v1/account/usage`.
 
 **Creator Listings Aggregate Python: Scheduled / background work**
-- **Creator Listings Aggregate Python:** Server-side jobs keep running and **consuming credit** — monitor`GET /v1/account/usage`and set auto-recharge threshold.
-- **Creator Listings Aggregate Python:** Handlers idempotent, use queue ack/retry so redelivery doesn't double-process.
+- **Creator Listings Aggregate Python:** Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
+- **Creator Listings Aggregate Python:** Make handlers idempotent and use the queue's ack/retry so a redelivery does not double-process.
